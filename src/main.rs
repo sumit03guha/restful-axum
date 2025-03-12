@@ -1,4 +1,8 @@
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    response::IntoResponse,
+    routing::{get, post},
+};
 
 #[tokio::main]
 async fn main() {
@@ -12,5 +16,27 @@ async fn main() {
 }
 
 fn app() -> Router {
-    Router::new().route("/", get(|| async { "Hello World" }))
+    let crud_router = crud_router();
+    Router::new()
+        .route("/", get(|| async { "Hello World" }))
+        .merge(crud_router)
 }
+
+fn crud_router() -> Router {
+    Router::new()
+        .route("/identity", post(create_identity))
+        .route(
+            "/identity/{id}",
+            get(get_identity)
+                .patch(update_identity)
+                .delete(delete_identity),
+        )
+}
+
+async fn create_identity() -> impl IntoResponse {}
+
+async fn get_identity() -> impl IntoResponse {}
+
+async fn update_identity() -> impl IntoResponse {}
+
+async fn delete_identity() -> impl IntoResponse {}
