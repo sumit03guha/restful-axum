@@ -2,16 +2,16 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::Path,
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
 };
-use mongodb::{Client, Collection, Database, bson::Document};
+use mongodb::{Client, Collection, Database, bson::doc};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Identity {
     name: String,
     age: u8,
@@ -20,7 +20,7 @@ struct Identity {
 #[tokio::main]
 async fn main() {
     let db: Database = init_db().await;
-    let identity_collection: Collection<Document> = init_identity_collection(db);
+    let identity_collection: Collection<Identity> = init_identity_collection(db);
     let app: Router = app(identity_collection);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -32,7 +32,7 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-fn app(collection: Collection<Document>) -> Router {
+fn app(collection: Collection<Identity>) -> Router {
     let crud_router = crud_router(collection);
     Router::new()
         .route("/", get(|| async { "Hello World" }))
@@ -43,15 +43,20 @@ async fn init_db() -> Database {
     let client: Client = Client::with_uri_str("mongodb://localhost:27017/")
         .await
         .unwrap();
+    let database = client.database("restful_axum");
+    database
+        .run_command(doc! { "ping" : 1 })
+        .await
+        .expect("Failed to ping DB");
 
-    client.database("restful_axum")
+    database
 }
 
-fn init_identity_collection(database: Database) -> Collection<Document> {
-    database.collection::<Document>("identity")
+fn init_identity_collection(database: Database) -> Collection<Identity> {
+    database.collection::<Identity>("identity")
 }
 
-fn crud_router(collection: Collection<Document>) -> Router {
+fn crud_router(collection: Collection<Identity>) -> Router {
     Router::new()
         .route("/identity", post(create_identity).get(get_all_identities))
         .route(
@@ -63,12 +68,25 @@ fn crud_router(collection: Collection<Document>) -> Router {
         .with_state(Arc::new(collection))
 }
 
-async fn create_identity(Json(identity): Json<Identity>) -> impl IntoResponse {
-    println!(
-        "Identity :: name : {}, age : {}",
-        identity.name, identity.age
-    );
-    (StatusCode::CREATED, "Created").into_response()
+async fn create_identity(
+    State(id_collection): State<Arc<Collection<Identity>>>,
+    Json(identity): Json<Identity>,
+) -> impl IntoResponse {
+    let result = id_collection
+        .insert_one(Identity {
+            name: identity.name,
+            age: identity.age,
+        })
+        .await;
+
+    match result {
+        Ok(result) => (
+            StatusCode::CREATED,
+            format!("Created with id : {}", result.inserted_id),
+        )
+            .into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
 }
 
 async fn get_all_identities() -> impl IntoResponse {
