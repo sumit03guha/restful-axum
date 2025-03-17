@@ -7,8 +7,8 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
+use futures::TryStreamExt;
 use mongodb::{Client, Collection, Database, bson::doc};
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -89,8 +89,18 @@ async fn create_identity(
     }
 }
 
-async fn get_all_identities() -> impl IntoResponse {
-    (StatusCode::FOUND, "Fetched all").into_response()
+async fn get_all_identities(
+    State(collection): State<Arc<Collection<Identity>>>,
+) -> impl IntoResponse {
+    let mut cursor = collection.find(doc! {}).await.unwrap();
+
+    let mut result: Vec<Identity> = vec![];
+
+    while let Some(doc) = cursor.try_next().await.unwrap() {
+        result.push(doc);
+    }
+
+    (StatusCode::FOUND, format!("Fetched : {:?}", result)).into_response()
 }
 
 async fn get_identity(Path(id): Path<u8>) -> impl IntoResponse {
