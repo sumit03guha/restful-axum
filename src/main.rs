@@ -8,11 +8,16 @@ use axum::{
     routing::{get, post},
 };
 use futures::TryStreamExt;
-use mongodb::{Client, Collection, Database, bson::doc};
+use mongodb::{
+    Client, Collection, Database,
+    bson::{doc, oid::ObjectId},
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Identity {
+    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    id: Option<ObjectId>,
     name: String,
     age: u8,
 }
@@ -74,6 +79,7 @@ async fn create_identity(
 ) -> impl IntoResponse {
     let result = id_collection
         .insert_one(Identity {
+            id: None,
             name: identity.name,
             age: identity.age,
         })
