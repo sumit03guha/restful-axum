@@ -92,13 +92,9 @@ async fn create_identity(
 async fn get_all_identities(
     State(collection): State<Arc<Collection<Identity>>>,
 ) -> impl IntoResponse {
-    let mut cursor = collection.find(doc! {}).await.unwrap();
+    let cursor = collection.find(doc! {}).await.unwrap();
 
-    let mut result: Vec<Identity> = vec![];
-
-    while let Some(doc) = cursor.try_next().await.unwrap() {
-        result.push(doc);
-    }
+    let result: Vec<Identity> = cursor.try_collect().await.unwrap();
 
     (StatusCode::FOUND, format!("Fetched : {:?}", result)).into_response()
 }
