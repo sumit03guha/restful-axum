@@ -105,8 +105,18 @@ async fn get_all_identities(
     (StatusCode::FOUND, format!("Fetched : {:?}", result)).into_response()
 }
 
-async fn get_identity(Path(id): Path<u8>) -> impl IntoResponse {
-    (StatusCode::FOUND, "Fetched").into_response()
+async fn get_identity(
+    State(collection): State<Arc<Collection<Identity>>>,
+    Path(id): Path<ObjectId>,
+) -> impl IntoResponse {
+    let result = collection
+        .find_one(doc! {
+            "_id": id
+        })
+        .await
+        .unwrap();
+
+    (StatusCode::FOUND, format!("Fetched : {:?}", result)).into_response()
 }
 
 async fn update_identity(Path(id): Path<u8>) -> impl IntoResponse {
