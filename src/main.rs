@@ -110,7 +110,13 @@ async fn get_all_identities(
 
     let result: Vec<Identity> = cursor.try_collect().await.unwrap();
 
-    (StatusCode::FOUND, format!("Fetched : {:?}", result)).into_response()
+    let res = ApiResponse {
+        message: "Fetched".to_string(),
+        data: result,
+    };
+    let res_data = to_string_pretty(&res).unwrap();
+
+    (StatusCode::FOUND, res_data).into_response()
 }
 
 async fn get_identity(
