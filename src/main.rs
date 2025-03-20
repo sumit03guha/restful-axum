@@ -116,7 +116,10 @@ async fn get_identity(
         .await
         .unwrap();
 
-    (StatusCode::FOUND, format!("Fetched : {:?}", result)).into_response()
+    match result {
+        Some(identity) => (StatusCode::FOUND, format!("Fetched : {:?}", identity)).into_response(),
+        None => (StatusCode::NOT_FOUND, "The id does not exist.").into_response(),
+    }
 }
 
 async fn update_identity(Path(id): Path<u8>) -> impl IntoResponse {
