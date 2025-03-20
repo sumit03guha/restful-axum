@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
+    body::Body,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
@@ -13,6 +14,7 @@ use mongodb::{
     bson::{doc, oid::ObjectId},
 };
 use serde::{Deserialize, Serialize};
+use serde_json::{json, to_string_pretty};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Identity {
@@ -20,6 +22,12 @@ struct Identity {
     id: Option<ObjectId>,
     name: String,
     age: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct ApiResponse<T> {
+    message: String,
+    data: T,
 }
 
 #[tokio::main]
@@ -117,8 +125,23 @@ async fn get_identity(
         .unwrap();
 
     match result {
-        Some(identity) => (StatusCode::FOUND, format!("Fetched : {:?}", identity)).into_response(),
-        None => (StatusCode::NOT_FOUND, "The id does not exist.").into_response(),
+        Some(identity) => {
+            let id_res = ApiResponse {
+                message: "Fetched".to_string(),
+                data: identity,
+            };
+            let res_data = to_string_pretty(&id_res).unwrap();
+            (StatusCode::FOUND, res_data).into_response()
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!(
+                {
+                    "message": "Does not exist"
+                }
+            )),
+        )
+            .into_response(),
     }
 }
 
