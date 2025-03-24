@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    body::Body,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
@@ -11,7 +10,7 @@ use axum::{
 use futures::TryStreamExt;
 use mongodb::{
     Client, Collection, Database,
-    bson::{doc, oid::ObjectId},
+    bson::{doc, oid::ObjectId, to_document},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, to_string_pretty};
@@ -22,6 +21,22 @@ struct Identity {
     id: Option<ObjectId>,
     name: String,
     age: u8,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct IdentityUpdate {
+    name: Option<String>,
+    age: Option<u8>,
+}
+
+impl IdentityUpdate {
+    fn validate(&self) -> Result<(), String> {
+        if self.age.is_none() && self.name.is_none() {
+            Err("Either age or name must be provided.".to_string())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -151,8 +166,23 @@ async fn get_identity(
     }
 }
 
-async fn update_identity(Path(id): Path<u8>) -> impl IntoResponse {
-    (StatusCode::OK, "Updated").into_response()
+async fn update_identity(
+    State(collection): State<Arc<Collection<Identity>>>,
+    Path(id): Path<ObjectId>,
+    Json(id_data): Json<IdentityUpdate>,
+) -> impl IntoResponse {
+    id_data.validate().unwrap();
+    let filter = doc! {
+        "_id":id
+    };
+    let update_data = to_document(&id_data).unwrap();
+    let update = doc! { "$set": update_data };
+    let result = collection.update_one(filter, update).await.unwrap();
+
+    match result.modified_count {
+        1 => (StatusCode::OK, "Updated").into_response(),
+        _ => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to update").into_response(),
+    }
 }
 
 async fn delete_identity(Path(id): Path<u8>) -> impl IntoResponse {
