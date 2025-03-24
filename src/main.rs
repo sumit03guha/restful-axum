@@ -25,7 +25,9 @@ struct Identity {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct IdentityUpdate {
+    #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     age: Option<u8>,
 }
 
@@ -171,11 +173,19 @@ async fn update_identity(
     Path(id): Path<ObjectId>,
     Json(id_data): Json<IdentityUpdate>,
 ) -> impl IntoResponse {
-    id_data.validate().unwrap();
+    if let Err(e) = id_data.validate() {
+        return (StatusCode::BAD_REQUEST, e).into_response();
+    }
+
     let filter = doc! {
         "_id":id
     };
-    let update_data = to_document(&id_data).unwrap();
+
+    let update_data = match to_document(&id_data) {
+        Ok(document) => document,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
+
     let update = doc! { "$set": update_data };
     let result = collection.update_one(filter, update).await.unwrap();
 
