@@ -195,6 +195,16 @@ async fn update_identity(
     }
 }
 
-async fn delete_identity(Path(id): Path<u8>) -> impl IntoResponse {
-    (StatusCode::OK, "Delted").into_response()
+async fn delete_identity(
+    State(collection): State<Arc<Collection<Identity>>>,
+    Path(id): Path<ObjectId>,
+) -> impl IntoResponse {
+    let filter = doc! {"_id":id};
+
+    let result = collection.delete_one(filter).await.unwrap();
+
+    match result.deleted_count {
+        1 => (StatusCode::OK, "Deleted").into_response(),
+        _ => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to delete").into_response(),
+    }
 }
