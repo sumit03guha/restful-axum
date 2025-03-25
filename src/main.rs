@@ -13,7 +13,6 @@ use mongodb::{
     bson::{doc, oid::ObjectId, to_document},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, to_string_pretty};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Identity {
@@ -72,7 +71,7 @@ fn app(collection: Collection<Identity>) -> Router {
 async fn init_db() -> Database {
     let client: Client = Client::with_uri_str("mongodb://localhost:27017/")
         .await
-        .unwrap();
+        .expect("Failed to initialize db");
     let database = client.database("restful_axum");
     database
         .run_command(doc! { "ping" : 1 })
@@ -111,12 +110,21 @@ async fn create_identity(
         .await;
 
     match result {
-        Ok(result) => (
-            StatusCode::CREATED,
-            format!("Created with id : {}", result.inserted_id),
-        )
-            .into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Ok(result) => {
+            let response_data = ApiResponse {
+                message: "Identity created".to_string(),
+                data: result.inserted_id,
+            };
+            (StatusCode::CREATED, Json(response_data)).into_response()
+        }
+        Err(e) => {
+            eprintln!("Internal Server Error : {}", e);
+            let response_data = ApiResponse {
+                message: "Internal Server Error".to_string(),
+                data: (),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response()
+        }
     }
 }
 
@@ -131,9 +139,8 @@ async fn get_all_identities(
         message: "Fetched".to_string(),
         data: result,
     };
-    let res_data = to_string_pretty(&res).unwrap();
 
-    (StatusCode::FOUND, res_data).into_response()
+    (StatusCode::OK, Json(res)).into_response()
 }
 
 async fn get_identity(
@@ -144,27 +151,32 @@ async fn get_identity(
         .find_one(doc! {
             "_id": id
         })
-        .await
-        .unwrap();
+        .await;
 
     match result {
-        Some(identity) => {
-            let id_res = ApiResponse {
+        Ok(Some(identity)) => {
+            let response_data = ApiResponse {
                 message: "Fetched".to_string(),
                 data: identity,
             };
-            let res_data = to_string_pretty(&id_res).unwrap();
-            (StatusCode::FOUND, res_data).into_response()
+
+            (StatusCode::OK, Json(response_data)).into_response()
         }
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(json!(
-                {
-                    "message": "Does not exist"
-                }
-            )),
-        )
-            .into_response(),
+        Ok(None) => {
+            let response_data = ApiResponse {
+                message: "Identity does not exist".to_string(),
+                data: (),
+            };
+            (StatusCode::NOT_FOUND, Json(response_data)).into_response()
+        }
+        Err(e) => {
+            eprintln!("Internal Server Error : {}", e);
+            let response_data = ApiResponse {
+                message: "Internal Server Error".to_string(),
+                data: (),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response()
+        }
     }
 }
 
@@ -187,11 +199,38 @@ async fn update_identity(
     };
 
     let update = doc! { "$set": update_data };
-    let result = collection.update_one(filter, update).await.unwrap();
+    let result = collection.update_one(filter, update).await;
 
-    match result.modified_count {
-        1 => (StatusCode::OK, "Updated").into_response(),
-        _ => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to update").into_response(),
+    match result {
+        Ok(data) => {
+            if data.matched_count == 0 {
+                let response_data = ApiResponse {
+                    message: "Document not found".to_string(),
+                    data: (),
+                };
+                (StatusCode::NOT_FOUND, Json(response_data)).into_response()
+            } else if data.modified_count == 0 {
+                let response_data = ApiResponse {
+                    message: "No changes made".to_string(),
+                    data: (),
+                };
+                (StatusCode::OK, Json(response_data)).into_response()
+            } else {
+                let response_data = ApiResponse {
+                    message: "Updated".to_string(),
+                    data: (),
+                };
+                (StatusCode::OK, Json(response_data)).into_response()
+            }
+        }
+        Err(e) => {
+            eprintln!("Internal Server Error : {}", e);
+            let response_data = ApiResponse {
+                message: "Internal Server Error".to_string(),
+                data: (),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response()
+        }
     }
 }
 
@@ -201,10 +240,31 @@ async fn delete_identity(
 ) -> impl IntoResponse {
     let filter = doc! {"_id":id};
 
-    let result = collection.delete_one(filter).await.unwrap();
+    let result = collection.delete_one(filter).await;
 
-    match result.deleted_count {
-        1 => (StatusCode::OK, "Deleted").into_response(),
-        _ => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to delete").into_response(),
+    match result {
+        Ok(result_data) => {
+            if result_data.deleted_count == 1 {
+                let response_data = ApiResponse {
+                    message: "Deleted".to_string(),
+                    data: (),
+                };
+                (StatusCode::OK, Json(response_data)).into_response()
+            } else {
+                let response_data = ApiResponse {
+                    message: "Document not found".to_string(),
+                    data: (),
+                };
+                (StatusCode::NOT_FOUND, Json(response_data)).into_response()
+            }
+        }
+        Err(e) => {
+            eprintln!("Internal Server Error : {}", e);
+            let response_data = ApiResponse {
+                message: "Internal Server Error".to_string(),
+                data: (),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response()
+        }
     }
 }
