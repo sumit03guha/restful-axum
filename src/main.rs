@@ -47,18 +47,17 @@ struct ApiResponse<T> {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db: Database = init_db().await;
     let identity_collection: Collection<Identity> = init_identity_collection(db);
     let app: Router = app(identity_collection);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!(
-        "Server up and running on {}",
-        listener.local_addr().unwrap()
-    );
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
 
-    axum::serve(listener, app).await.unwrap();
+    println!("Server up and running on {}", listener.local_addr()?);
+
+    axum::serve(listener, app).await?;
+    Ok(())
 }
 
 fn app(collection: Collection<Identity>) -> Router {
@@ -131,16 +130,34 @@ async fn create_identity(
 async fn get_all_identities(
     State(collection): State<Arc<Collection<Identity>>>,
 ) -> impl IntoResponse {
-    let cursor = collection.find(doc! {}).await.unwrap();
+    match collection.find(doc! {}).await {
+        Ok(cursor) => match cursor.try_collect::<Vec<Identity>>().await {
+            Ok(result) => {
+                let response_data = ApiResponse {
+                    message: "Fetched all identities".to_string(),
+                    data: result,
+                };
 
-    let result: Vec<Identity> = cursor.try_collect().await.unwrap();
-
-    let res = ApiResponse {
-        message: "Fetched".to_string(),
-        data: result,
-    };
-
-    (StatusCode::OK, Json(res)).into_response()
+                (StatusCode::OK, Json(response_data)).into_response()
+            }
+            Err(e) => {
+                eprintln!("Internal Server Error : {}", e);
+                let response_data = ApiResponse {
+                    message: "Internal Server Error".to_string(),
+                    data: Vec::<Identity>::new(),
+                };
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response()
+            }
+        },
+        Err(e) => {
+            eprintln!("Internal Server Error : {}", e);
+            let response_data = ApiResponse {
+                message: "Internal Server Error".to_string(),
+                data: Vec::<Identity>::new(),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response()
+        }
+    }
 }
 
 async fn get_identity(
