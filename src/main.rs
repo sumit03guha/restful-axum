@@ -48,7 +48,7 @@ struct ApiResponse<T> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let db: Database = init_db().await;
+    let db: Database = init_db().await?;
     let identity_collection: Collection<Identity> = init_identity_collection(db);
     let app: Router = app(identity_collection);
 
@@ -67,17 +67,12 @@ fn app(collection: Collection<Identity>) -> Router {
         .merge(crud_router)
 }
 
-async fn init_db() -> Database {
-    let client: Client = Client::with_uri_str("mongodb://localhost:27017/")
-        .await
-        .expect("Failed to initialize db");
+async fn init_db() -> Result<Database, Box<dyn std::error::Error>> {
+    let client: Client = Client::with_uri_str("mongodb://localhost:27017/").await?;
     let database = client.database("restful_axum");
-    database
-        .run_command(doc! { "ping" : 1 })
-        .await
-        .expect("Failed to ping DB");
+    database.run_command(doc! { "ping" : 1 }).await?;
 
-    database
+    Ok(database)
 }
 
 fn init_identity_collection(database: Database) -> Collection<Identity> {
