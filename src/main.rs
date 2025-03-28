@@ -46,6 +46,7 @@ struct ApiResponse<T> {
     data: T,
 }
 
+#[derive(Debug, Deserialize)]
 struct Auth {
     email: String,
     password: String,
@@ -54,9 +55,11 @@ struct Auth {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db: Database = init_db().await?;
-    let identity_collection: Collection<Identity> = init_identity_collection(db);
-    let auth_collection: Collection<Auth> = init_auth_collection(db);
-    let app: Router = app(identity_collection);
+
+    let identity_collection: Collection<Identity> = init_identity_collection(&db);
+    let auth_collection: Collection<Auth> = init_auth_collection(&db);
+
+    let app: Router = app(identity_collection, auth_collection);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
 
@@ -66,11 +69,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn app(collection: Collection<Identity>) -> Router {
-    let crud_router = crud_router(collection);
+fn app(identity_collection: Collection<Identity>, auth_collection: Collection<Auth>) -> Router {
+    let crud_router = crud_router(identity_collection);
+    let auth_router = auth_router(auth_collection);
+
     Router::new()
         .route("/", get(|| async { "Hello World" }))
         .merge(crud_router)
+        .merge(auth_router)
 }
 
 async fn init_db() -> Result<Database, Box<dyn std::error::Error>> {
@@ -81,11 +87,11 @@ async fn init_db() -> Result<Database, Box<dyn std::error::Error>> {
     Ok(database)
 }
 
-fn init_identity_collection(database: Database) -> Collection<Identity> {
+fn init_identity_collection(database: &Database) -> Collection<Identity> {
     database.collection::<Identity>("identity")
 }
 
-fn init_auth_collection(database: Database) -> Collection<Auth> {
+fn init_auth_collection(database: &Database) -> Collection<Auth> {
     database.collection::<Auth>("auth")
 }
 
