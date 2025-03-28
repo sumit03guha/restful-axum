@@ -1,5 +1,9 @@
 use std::sync::Arc;
 
+use argon2::{
+    Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
+};
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -46,7 +50,7 @@ struct ApiResponse<T> {
     data: T,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Auth {
     email: String,
     password: String,
@@ -308,6 +312,47 @@ async fn signup(
     State(collection): State<Arc<Collection<Auth>>>,
     Json(credentials): Json<Auth>,
 ) -> impl IntoResponse {
+    let argon2 = Argon2::default();
+    let salt = SaltString::generate(&mut OsRng);
+
+    let password_hash = match argon2.hash_password(credentials.password.as_bytes(), &salt) {
+        Ok(hash) => hash.to_string(),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!(
+                    "And error occurred while generating the password hash: {}",
+                    e
+                ),
+            )
+                .into_response();
+        }
+    };
+
+    let result = collection
+        .insert_one(Auth {
+            email: credentials.email,
+            password: password_hash,
+        })
+        .await;
+
+    match result {
+        Ok(result) => {
+            let response_data = ApiResponse {
+                message: "Auth created".to_string(),
+                data: result.inserted_id,
+            };
+            (StatusCode::CREATED, Json(response_data)).into_response()
+        }
+        Err(e) => {
+            eprintln!("Internal Server Error : {}", e);
+            let response_data = ApiResponse {
+                message: "Internal Server Error".to_string(),
+                data: (),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response()
+        }
+    }
 }
 
 async fn login(
