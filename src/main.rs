@@ -315,17 +315,15 @@ async fn signup(
     let argon2 = Argon2::default();
     let salt = SaltString::generate(&mut OsRng);
 
-    let password_hash = match argon2.hash_password(credentials.password.as_bytes(), &salt) {
+    let password_hash = match argon2.hash_password(&credentials.password.as_bytes(), &salt) {
         Ok(hash) => hash.to_string(),
         Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!(
-                    "And error occurred while generating the password hash: {}",
-                    e
-                ),
-            )
-                .into_response();
+            eprintln!("Internal Server Error : {}", e);
+            let response_data = ApiResponse {
+                message: "Internal Server Error".to_string(),
+                data: (),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response();
         }
     };
 
@@ -359,4 +357,54 @@ async fn login(
     State(collection): State<Arc<Collection<Auth>>>,
     Json(credentials): Json<Auth>,
 ) -> impl IntoResponse {
+    let result = collection.find_one(doc! {"email":credentials.email}).await;
+
+    let credentials_doc = match result {
+        Ok(Some(result)) => result,
+        Ok(None) => {
+            let response_data = ApiResponse {
+                message: "Credential does not exist".to_string(),
+                data: (),
+            };
+            return (StatusCode::NOT_FOUND, Json(response_data)).into_response();
+        }
+        Err(e) => {
+            eprintln!("Internal Server Error : {}", e);
+            let response_data = ApiResponse {
+                message: "Internal Server Error".to_string(),
+                data: (),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response();
+        }
+    };
+
+    let parsed_hash = match PasswordHash::new(&credentials_doc.password) {
+        Ok(hash) => hash,
+        Err(e) => {
+            eprintln!("Internal Server Error : {}", e);
+            let response_data = ApiResponse {
+                message: "Internal Server Error".to_string(),
+                data: (),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response();
+        }
+    };
+
+    if let Err(e) =
+        Argon2::default().verify_password(&credentials_doc.password.as_bytes(), &parsed_hash)
+    {
+        eprintln!("Invalid Password : {}", e);
+        let response = ApiResponse {
+            message: "Invalid Password".to_string(),
+            data: (),
+        };
+        return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
+    };
+
+    let response = ApiResponse {
+        message: "You are logged in".to_string(),
+        data: (),
+    };
+
+    (StatusCode::OK, Json(response)).into_response()
 }
