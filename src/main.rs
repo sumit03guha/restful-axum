@@ -48,7 +48,7 @@ struct ApiResponse<T> {
 
 struct Auth {
     email: String,
-    password: String
+    password: String,
 }
 
 #[tokio::main]
@@ -101,7 +101,12 @@ fn crud_router(collection: Collection<Identity>) -> Router {
         .with_state(Arc::new(collection))
 }
 
-fn auth_router(collection: Collection<Auth>)
+fn auth_router(collection: Collection<Auth>) -> Router {
+    Router::new()
+        .route("/signup", post(signup))
+        .route("/login", post(login))
+        .with_state(Arc::new(collection))
+}
 
 async fn create_identity(
     State(id_collection): State<Arc<Collection<Identity>>>,
@@ -291,4 +296,16 @@ async fn delete_identity(
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response()
         }
     }
+}
+
+async fn signup(
+    State(collection): State<Arc<Collection<Auth>>>,
+    Json(credentials): Json<Auth>,
+) -> impl IntoResponse {
+}
+
+async fn login(
+    State(collection): State<Arc<Collection<Auth>>>,
+    Json(credentials): Json<Auth>,
+) -> impl IntoResponse {
 }
