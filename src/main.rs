@@ -46,10 +46,16 @@ struct ApiResponse<T> {
     data: T,
 }
 
+struct Auth {
+    email: String,
+    password: String
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db: Database = init_db().await?;
     let identity_collection: Collection<Identity> = init_identity_collection(db);
+    let auth_collection: Collection<Auth> = init_auth_collection(db);
     let app: Router = app(identity_collection);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
@@ -79,6 +85,10 @@ fn init_identity_collection(database: Database) -> Collection<Identity> {
     database.collection::<Identity>("identity")
 }
 
+fn init_auth_collection(database: Database) -> Collection<Auth> {
+    database.collection::<Auth>("auth")
+}
+
 fn crud_router(collection: Collection<Identity>) -> Router {
     Router::new()
         .route("/identity", post(create_identity).get(get_all_identities))
@@ -90,6 +100,8 @@ fn crud_router(collection: Collection<Identity>) -> Router {
         )
         .with_state(Arc::new(collection))
 }
+
+fn auth_router(collection: Collection<Auth>)
 
 async fn create_identity(
     State(id_collection): State<Arc<Collection<Identity>>>,
