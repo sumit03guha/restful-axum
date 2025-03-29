@@ -486,7 +486,12 @@ async fn login_required(
     let split_headers = headers.split_whitespace().collect::<Vec<&str>>();
 
     if split_headers.len() != 2 {
-        return (StatusCode::BAD_REQUEST, "Invalid Token Format").into_response();
+        eprintln!("Invalid Token Format");
+        let response_data = ApiResponse {
+            message: "Invalid Token Format".to_string(),
+            data: (),
+        };
+        return (StatusCode::BAD_REQUEST, Json(response_data)).into_response();
     }
 
     let token = split_headers[1];
