@@ -1,40 +1,121 @@
 # Rust Axum API Playground
 
-This project is a personal, self-directed learning endeavor built with Rust and Axum. It’s designed as a sandbox to experiment with asynchronous programming, robust routing, and error handling—all in a type-safe and performance-oriented environment. Use this project as your playground to understand key web development concepts, build practical RESTful APIs, and progressively sharpen your Rust skills.
+This project is a personal, self-directed learning endeavor built with Rust and Axum. It serves as a sandbox to experiment with asynchronous programming, robust routing, structured error handling, and secure authentication—all within a type-safe, high-performance environment. Use this project to explore key web development concepts, build practical RESTful APIs, and sharpen your Rust skills.
 
 ---
 
 ## Features
 
-- **Asynchronous Programming:** Built using Tokio for handling concurrent operations.
-- **Robust Routing:** Leveraging Axum’s routing system to design a RESTful API.
-- **Type Safety:** Emphasizes Rust’s type system to catch errors at compile time.
-- **Structured Error Handling:** Consistent JSON responses using an `ApiResponse` wrapper.
-- **MongoDB Integration:** Uses MongoDB as the data store via the official Rust driver.
+- **Asynchronous Programming:** Built using Tokio for concurrent operations.
+- **Robust Routing:** Leverages Axum's routing system to design a RESTful API.
+- **Type Safety:** Utilizes Rust’s strong type system to catch errors at compile time.
+- **Structured Error Handling:** Consistent JSON responses via an `ApiResponse` wrapper.
+- **MongoDB Integration:** Uses MongoDB as the datastore via the official Rust driver.
+- **Authentication & Authorization:** Secure endpoints with JWT and password hashing (Argon2).
 
 ---
 
 ## Routes and Endpoints
 
-### GET `/`
+The API is split into **public endpoints** (accessible without authentication) and **protected endpoints** (which require a valid JWT token). For protected endpoints, include the token in the `Authorization` header using the format:
+
+```sh
+Authorization: Bearer <JWT_TOKEN>
+```
+
+### Public Endpoints
+
+#### GET `/`
 
 - **Description:**  
-  Returns a simple "Hello World" message, serving as a health check.
+  Returns a simple "Hello World" message as a health check.
 - **Method:** GET
 - **Response:**  
   - **Status:** 200 OK  
-  - **Body:**  
+  - **Body:**
 
-    ```bash
+    ```plain
     Hello World
+    ```
+
+#### POST `/signup`
+
+- **Description:**  
+  Registers a new user by accepting an email and password. The password is securely hashed using Argon2.
+- **Method:** POST
+- **Request Body Example:**
+
+  ```json
+  {
+    "email": "user@example.com",
+    "password": "your_password"
+  }
+  ```
+
+- **Response:**  
+  - **Status:** 201 Created  
+  - **Body:**
+
+    ```json
+    {
+      "message": "Auth created",
+      "data": "INSERTED_ID_HERE"
+    }
+    ```
+
+#### POST `/login`
+
+- **Description:**  
+  Authenticates a user with email and password. On success, returns a JWT token.
+- **Method:** POST
+- **Request Body Example:**
+
+  ```json
+  {
+    "email": "user@example.com",
+    "password": "your_password"
+  }
+  ```
+
+- **Response:**  
+  - **Status:** 200 OK  
+  - **Body:**
+
+    ```json
+    {
+      "message": "You are logged in",
+      "data": "JWT_TOKEN_HERE"
+    }
     ```
 
 ---
 
-### POST `/identity`
+### Protected Endpoints
+
+*These endpoints require a valid JWT token in the `Authorization` header.*
+
+#### GET `/protected`
 
 - **Description:**  
-  Creates a new identity record. The request should include a JSON payload with `name` and `age`.
+  A sample endpoint that greets the authenticated user.
+- **Method:** GET
+- **Response:**  
+  - **Status:** 200 OK  
+  - **Body:**
+
+    ```json
+    {
+      "message": "Hello. You are logged in using user@example.com",
+      "data": {}
+    }
+    ```
+
+#### Identity CRUD Operations
+
+##### POST `/identity`
+
+- **Description:**  
+  Creates a new identity record. The JSON payload must include `name` and `age`.
 - **Method:** POST
 - **Request Body Example:**
 
@@ -47,7 +128,7 @@ This project is a personal, self-directed learning endeavor built with Rust and 
 
 - **Response:**  
   - **Status:** 201 Created  
-  - **Body:**  
+  - **Body:**
 
     ```json
     {
@@ -56,16 +137,14 @@ This project is a personal, self-directed learning endeavor built with Rust and 
     }
     ```
 
----
-
-### GET `/identity`
+##### GET `/identity`
 
 - **Description:**  
-  Retrieves a list of all identities stored in the database.
+  Retrieves a list of all identities in the database.
 - **Method:** GET
 - **Response:**  
   - **Status:** 200 OK  
-  - **Body:**  
+  - **Body:**
 
     ```json
     {
@@ -85,12 +164,10 @@ This project is a personal, self-directed learning endeavor built with Rust and 
     }
     ```
 
----
-
-### GET `/identity/{id}`
+##### GET `/identity/{id}`
 
 - **Description:**  
-  Retrieves a specific identity by its unique ObjectId.
+  Retrieves a specific identity by its MongoDB ObjectId.
 - **Method:** GET
 - **URL Parameter:**  
   - `id`: The MongoDB ObjectId of the identity.
@@ -111,12 +188,10 @@ This project is a personal, self-directed learning endeavor built with Rust and 
     }
     ```
 
----
-
-### PATCH `/identity/{id}`
+##### PATCH `/identity/{id}`
 
 - **Description:**  
-  Updates an existing identity partially. Only the fields provided in the JSON payload will be updated. At least one field (`name` or `age`) must be provided.
+  Partially updates an existing identity. At least one field (`name` or `age`) must be provided.
 - **Method:** PATCH
 - **URL Parameter:**  
   - `id`: The MongoDB ObjectId of the identity.
@@ -130,10 +205,10 @@ This project is a personal, self-directed learning endeavor built with Rust and 
 
 - **Response:**  
   - **Status:**  
-    - **200 OK** if updated or no changes were necessary  
+    - **200 OK** if updated (or no changes were made)  
     - **404 Not Found** if the identity does not exist  
-    - **400 Bad Request** if neither `name` nor `age` is provided  
-  - **Body:**  
+    - **400 Bad Request** if neither field is provided  
+  - **Body:**
 
     ```json
     {
@@ -142,12 +217,10 @@ This project is a personal, self-directed learning endeavor built with Rust and 
     }
     ```
 
----
-
-### DELETE `/identity/{id}`
+##### DELETE `/identity/{id}`
 
 - **Description:**  
-  Deletes an identity record based on its ObjectId.
+  Deletes an identity record based on its MongoDB ObjectId.
 - **Method:** DELETE
 - **URL Parameter:**  
   - `id`: The MongoDB ObjectId of the identity.
@@ -155,7 +228,7 @@ This project is a personal, self-directed learning endeavor built with Rust and 
   - **Status:**  
     - **200 OK** if deletion was successful  
     - **404 Not Found** if the identity does not exist  
-  - **Body:**  
+  - **Body:**
 
     ```json
     {
@@ -164,15 +237,13 @@ This project is a personal, self-directed learning endeavor built with Rust and 
     }
     ```
 
----
-
 ## Running the Project
 
 ### Prerequisites
 
 - **Rust Toolchain:** Install from [rustup.rs](https://rustup.rs/)
-- **MongoDB:** Running instance (default URI: `mongodb://localhost:27017/`)
-- **Cargo:** Package manager included with Rust
+- **MongoDB:** Ensure you have a running instance (default URI: `mongodb://localhost:27017/`)
+- **Cargo:** Rust’s package manager
 
 ### Installation
 
@@ -189,6 +260,16 @@ This project is a personal, self-directed learning endeavor built with Rust and 
    cargo run
    ```
 
-   The server will start on port `3000`. You can test the endpoints using tools like `curl`, Postman, or your preferred REST client.
+   The server will start on port `3000`. Test the endpoints using tools like `curl`, Postman, or your preferred REST client.
+
+---
+
+## Project Structure
+
+- **Main File:** Contains the Axum server setup, router composition, and main function.
+- **Route Handlers:** Functions for Identity CRUD operations and authentication (signup/login).
+- **Middleware:** Custom `login_required` middleware to enforce JWT authentication on protected endpoints.
+- **Data Models:** Structs (`Identity`, `Auth`, etc.) using Serde for serialization/deserialization.
+- **Database Integration:** Uses the official MongoDB Rust driver for database operations.
 
 ---
