@@ -89,7 +89,9 @@ fn app(
     identity_collection: Arc<Collection<Identity>>,
     auth_collection: Arc<Collection<Auth>>,
 ) -> Router {
-    let crud_router = crud_router(Arc::clone(&identity_collection));
+    let crud_router = crud_router(Arc::clone(&identity_collection)).route_layer(
+        from_fn_with_state(Arc::clone(&auth_collection), login_required),
+    );
     let auth_router = auth_router(Arc::clone(&auth_collection));
 
     Router::new()
@@ -446,7 +448,7 @@ async fn login(
 fn generate_token(email: &str) -> Result<String, jsonwebtoken::errors::Error> {
     let my_claims = Claims {
         sub: email.to_string(),
-        exp: get_current_timestamp() + Duration::new(60, 0).as_secs(),
+        exp: get_current_timestamp() + Duration::new(3600, 0).as_secs(),
     };
     encode(
         &Header::default(),
