@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use argon2::{
     Argon2,
@@ -12,6 +12,7 @@ use axum::{
     routing::{get, post},
 };
 use futures::TryStreamExt;
+use jsonwebtoken::{EncodingKey, Header, encode, get_current_timestamp};
 use mongodb::{
     Client, Collection, Database,
     bson::{doc, oid::ObjectId, to_document},
@@ -54,6 +55,12 @@ struct ApiResponse<T> {
 struct Auth {
     email: String,
     password: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    sub: String,
+    exp: u64,
 }
 
 #[tokio::main]
@@ -357,7 +364,9 @@ async fn login(
     State(collection): State<Arc<Collection<Auth>>>,
     Json(credentials): Json<Auth>,
 ) -> impl IntoResponse {
-    let result = collection.find_one(doc! {"email":credentials.email}).await;
+    let result = collection
+        .find_one(doc! { "email" : credentials.email })
+        .await;
 
     let credentials_doc = match result {
         Ok(Some(result)) => result,
@@ -401,10 +410,35 @@ async fn login(
         return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
     };
 
+    let auth_token = match generate_token(&credentials_doc.email) {
+        Ok(token) => token,
+        Err(e) => {
+            eprintln!("Internal Server Error while generating auth token: {}", e);
+            let response_data = ApiResponse {
+                message: "Internal Server Error".to_string(),
+                data: (),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response();
+        }
+    };
+
     let response = ApiResponse {
         message: "You are logged in".to_string(),
-        data: (),
+        data: auth_token,
     };
 
     (StatusCode::OK, Json(response)).into_response()
+}
+
+fn generate_token(username: &str) -> Result<String, jsonwebtoken::errors::Error> {
+    let key = b"secret_key";
+    let my_claims = Claims {
+        sub: username.to_string(),
+        exp: get_current_timestamp() + Duration::new(60, 0).as_secs(),
+    };
+    encode(
+        &Header::default(),
+        &my_claims,
+        &EncodingKey::from_secret(key),
+    )
 }
