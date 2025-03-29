@@ -5,19 +5,24 @@ use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use axum::{
-    Json, Router,
-    extract::{Path, State},
+    Extension, Json, Router,
+    extract::{Path, Request, State},
     http::StatusCode,
+    middleware::{Next, from_fn_with_state},
     response::IntoResponse,
     routing::{get, post},
 };
 use futures::TryStreamExt;
-use jsonwebtoken::{EncodingKey, Header, encode, get_current_timestamp};
+use jsonwebtoken::{
+    DecodingKey, EncodingKey, Header, Validation, decode, encode, get_current_timestamp,
+};
 use mongodb::{
     Client, Collection, Database,
     bson::{doc, oid::ObjectId, to_document},
 };
 use serde::{Deserialize, Serialize};
+
+const SECRET_KEY: &str = "secret_key";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Identity {
@@ -51,7 +56,7 @@ struct ApiResponse<T> {
     data: T,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Auth {
     email: String,
     password: String,
@@ -67,8 +72,8 @@ struct Claims {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db: Database = init_db().await?;
 
-    let identity_collection: Collection<Identity> = init_identity_collection(&db);
-    let auth_collection: Collection<Auth> = init_auth_collection(&db);
+    let identity_collection: Arc<Collection<Identity>> = init_identity_collection(&db);
+    let auth_collection: Arc<Collection<Auth>> = init_auth_collection(&db);
 
     let app: Router = app(identity_collection, auth_collection);
 
@@ -80,12 +85,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn app(identity_collection: Collection<Identity>, auth_collection: Collection<Auth>) -> Router {
-    let crud_router = crud_router(identity_collection);
-    let auth_router = auth_router(auth_collection);
+fn app(
+    identity_collection: Arc<Collection<Identity>>,
+    auth_collection: Arc<Collection<Auth>>,
+) -> Router {
+    let crud_router = crud_router(Arc::clone(&identity_collection));
+    let auth_router = auth_router(Arc::clone(&auth_collection));
 
     Router::new()
         .route("/", get(|| async { "Hello World" }))
+        .route("/protected", get(protected))
+        .route_layer(from_fn_with_state(
+            Arc::clone(&auth_collection),
+            login_required,
+        ))
         .merge(crud_router)
         .merge(auth_router)
 }
@@ -98,15 +111,15 @@ async fn init_db() -> Result<Database, Box<dyn std::error::Error>> {
     Ok(database)
 }
 
-fn init_identity_collection(database: &Database) -> Collection<Identity> {
-    database.collection::<Identity>("identity")
+fn init_identity_collection(database: &Database) -> Arc<Collection<Identity>> {
+    Arc::new(database.collection::<Identity>("identity"))
 }
 
-fn init_auth_collection(database: &Database) -> Collection<Auth> {
-    database.collection::<Auth>("auth")
+fn init_auth_collection(database: &Database) -> Arc<Collection<Auth>> {
+    Arc::new(database.collection::<Auth>("auth"))
 }
 
-fn crud_router(collection: Collection<Identity>) -> Router {
+fn crud_router(collection: Arc<Collection<Identity>>) -> Router {
     Router::new()
         .route("/identity", post(create_identity).get(get_all_identities))
         .route(
@@ -115,14 +128,14 @@ fn crud_router(collection: Collection<Identity>) -> Router {
                 .patch(update_identity)
                 .delete(delete_identity),
         )
-        .with_state(Arc::new(collection))
+        .with_state(Arc::clone(&collection))
 }
 
-fn auth_router(collection: Collection<Auth>) -> Router {
+fn auth_router(collection: Arc<Collection<Auth>>) -> Router {
     Router::new()
         .route("/signup", post(signup))
         .route("/login", post(login))
-        .with_state(Arc::new(collection))
+        .with_state(Arc::clone(&collection))
 }
 
 async fn create_identity(
@@ -400,7 +413,7 @@ async fn login(
     };
 
     if let Err(e) =
-        Argon2::default().verify_password(&credentials_doc.password.as_bytes(), &parsed_hash)
+        Argon2::default().verify_password(&credentials.password.as_bytes(), &parsed_hash)
     {
         eprintln!("Invalid Password : {}", e);
         let response = ApiResponse {
@@ -430,15 +443,89 @@ async fn login(
     (StatusCode::OK, Json(response)).into_response()
 }
 
-fn generate_token(username: &str) -> Result<String, jsonwebtoken::errors::Error> {
-    let key = b"secret_key";
+fn generate_token(email: &str) -> Result<String, jsonwebtoken::errors::Error> {
     let my_claims = Claims {
-        sub: username.to_string(),
+        sub: email.to_string(),
         exp: get_current_timestamp() + Duration::new(60, 0).as_secs(),
     };
     encode(
         &Header::default(),
         &my_claims,
-        &EncodingKey::from_secret(key),
+        &EncodingKey::from_secret(SECRET_KEY.as_bytes()),
     )
+}
+
+async fn login_required(
+    State(collection): State<Arc<Collection<Auth>>>,
+    mut req: Request,
+    next: Next,
+) -> impl IntoResponse {
+    let headers = match req.headers().get("Authorization") {
+        Some(headers) => match headers.to_str() {
+            Ok(headers) => headers,
+            Err(e) => {
+                eprintln!("Internal Server Error : {}", e);
+                let response_data = ApiResponse {
+                    message: "Internal Server Error".to_string(),
+                    data: (),
+                };
+                return (StatusCode::INTERNAL_SERVER_ERROR, Json(response_data)).into_response();
+            }
+        },
+        None => {
+            eprintln!("Missing headers");
+            let response_data = ApiResponse {
+                message: "Missing headers".to_string(),
+                data: (),
+            };
+            return (StatusCode::BAD_REQUEST, Json(response_data)).into_response();
+        }
+    };
+    let split_headers = headers.split_whitespace().collect::<Vec<&str>>();
+
+    if split_headers.len() != 2 {
+        return (StatusCode::BAD_REQUEST, "Invalid Token Format").into_response();
+    }
+
+    let token = split_headers[1];
+
+    let token_data = match decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(SECRET_KEY.as_bytes()),
+        &Validation::default(),
+    ) {
+        Ok(token_data) => token_data,
+        Err(e) => {
+            eprintln!("Token Error : {}", e);
+            let response_data = ApiResponse {
+                message: e.to_string(),
+                data: (),
+            };
+            return (StatusCode::BAD_REQUEST, Json(response_data)).into_response();
+        }
+    };
+
+    let email = token_data.claims.sub;
+    let result = collection
+        .find_one(doc! {
+            "email": &email
+        })
+        .await;
+
+    match result {
+        Ok(_) => {
+            req.extensions_mut().insert(email);
+            next.run(req).await
+        }
+        Err(err) => (StatusCode::UNAUTHORIZED, err.to_string()).into_response(),
+    }
+}
+
+async fn protected(Extension(email): Extension<String>) -> impl IntoResponse {
+    let response = ApiResponse {
+        message: format!("Hello. You are logged in using {}", email),
+        data: {},
+    };
+
+    (StatusCode::OK, Json(response))
 }
