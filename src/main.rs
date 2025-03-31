@@ -1,5 +1,3 @@
-use std::{sync::Arc, time::Duration};
-
 use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
@@ -21,8 +19,11 @@ use mongodb::{
     bson::{doc, oid::ObjectId, to_document},
 };
 use serde::{Deserialize, Serialize};
+use std::{sync::Arc, time::Duration};
 
-const SECRET_KEY: &str = "secret_key";
+mod config;
+use config::load_dotenv;
+use config::{HOST, MONGO_URI, PORT, SECRET_KEY};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Identity {
@@ -70,6 +71,8 @@ struct Claims {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    load_dotenv();
+
     let db: Database = init_db().await?;
 
     let identity_collection: Arc<Collection<Identity>> = init_identity_collection(&db);
@@ -77,7 +80,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app: Router = app(identity_collection, auth_collection);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    let listener =
+        tokio::net::TcpListener::bind(format!("{}:{}", HOST.to_string(), PORT.to_string())).await?;
 
     println!("Server up and running on {}", listener.local_addr()?);
 
@@ -106,7 +110,7 @@ fn app(
 }
 
 async fn init_db() -> Result<Database, Box<dyn std::error::Error>> {
-    let client: Client = Client::with_uri_str("mongodb://localhost:27017/").await?;
+    let client: Client = Client::with_uri_str(MONGO_URI.to_string()).await?;
     let database = client.database("restful_axum");
     database.run_command(doc! { "ping" : 1 }).await?;
 
