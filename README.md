@@ -12,6 +12,33 @@ This project is a personal, self-directed learning endeavor built with Rust and 
 - **Structured Error Handling:** Consistent JSON responses via an `ApiResponse` wrapper.
 - **MongoDB Integration:** Uses MongoDB as the datastore via the official Rust driver.
 - **Authentication & Authorization:** Secure endpoints with JWT and password hashing (Argon2).
+- **Centralized Configuration:** Loads environment variables from a `.env` file using a dedicated configuration module.
+
+---
+
+## Configuration
+
+The application uses a dedicated `config` module to load environment variables via [`dotenvy`](https://crates.io/crates/dotenvy) and [`once_cell`](https://crates.io/crates/once_cell). Global configuration values are defined in `config.rs` and can be imported throughout the app.
+
+### Environment Variables
+
+The following environment variables must be set in your `.env` file:
+
+- `SECRET_KEY` – The secret key used for JWT encoding.
+- `HOST` – The host on which the API server will run (e.g., `0.0.0.0`).
+- `PORT` – The port on which the API server will listen (e.g., `3000`).
+- `MONGO_URI` – The connection URI for your MongoDB instance (e.g., `mongodb://localhost:27017/`).
+
+Example `.env` file:
+
+```env
+SECRET_KEY=your_secret_key_here
+HOST=0.0.0.0
+PORT=3000
+MONGO_URI=mongodb://localhost:27017/
+```
+
+The configuration is loaded at the beginning of the `main` function by calling `load_dotenv()`, making these values available globally.
 
 ---
 
@@ -237,6 +264,8 @@ Authorization: Bearer <JWT_TOKEN>
     }
     ```
 
+---
+
 ## Running the Project
 
 ### Prerequisites
@@ -254,19 +283,32 @@ Authorization: Bearer <JWT_TOKEN>
    cd rust-axum-api-playground
    ```
 
-2. **Build and Run:**
+2. **Set Up Environment Variables:**
+
+   Create a `.env` file in the root directory with the following contents:
+
+   ```env
+   SECRET_KEY=your_secret_key_here
+   HOST=0.0.0.0
+   PORT=3000
+   MONGO_URI=mongodb://localhost:27017/
+   ```
+
+3. **Build and Run:**
 
    ```bash
    cargo run
    ```
 
-   The server will start on port `3000`. Test the endpoints using tools like `curl`, Postman, or your preferred REST client.
+   The server will start on the host and port specified in your `.env` file (e.g., `0.0.0.0:3000`). Test the endpoints using tools like `curl`, Postman, or your preferred REST client.
 
 ---
 
 ## Project Structure
 
 - **Main File:** Contains the Axum server setup, router composition, and main function.
+- **Configuration:**  
+  - `config.rs` loads the `.env` file and exposes global configuration values (`SECRET_KEY`, `HOST`, `PORT`, `MONGO_URI`) via lazy statics.
 - **Route Handlers:** Functions for Identity CRUD operations and authentication (signup/login).
 - **Middleware:** Custom `login_required` middleware to enforce JWT authentication on protected endpoints.
 - **Data Models:** Structs (`Identity`, `Auth`, etc.) using Serde for serialization/deserialization.
