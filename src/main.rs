@@ -1,3 +1,7 @@
+mod config;
+use config::load_dotenv;
+use config::{HOST, MONGO_URI, PORT, SECRET_KEY};
+
 use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
@@ -20,10 +24,6 @@ use mongodb::{
 };
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
-
-mod config;
-use config::load_dotenv;
-use config::{HOST, MONGO_URI, PORT, SECRET_KEY};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Identity {
