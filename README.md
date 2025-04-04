@@ -13,6 +13,7 @@ This project is a personal, self-directed learning endeavor built with Rust and 
 - **MongoDB Integration:** Uses MongoDB as the datastore via the official Rust driver.
 - **Authentication & Authorization:** Secure endpoints with JWT and password hashing (Argon2).
 - **Centralized Configuration:** Loads environment variables from a `.env` file using a dedicated configuration module.
+- **Middleware Support:** Implements custom middleware for JWT authentication.
 
 ---
 
